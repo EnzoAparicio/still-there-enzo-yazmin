@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Still There – Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600&family=Nunito:wght@400;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+body{margin:0;font-family:Nunito,sans-serif;background:#0B0A1A;color:#fff}
+h1,h2,button{font-family:Fredoka,sans-serif}
+button{cursor:pointer;border:3px solid #1B1340;border-radius:14px;padding:8px 16px;font-size:17px;background:#fff;color:#1B1340}
+.hidden{display:none!important}
+#home{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:16px;background:linear-gradient(160deg,#5B2EFF,#1E3AFF)}
+#home h1{font-size:72px;margin:0;line-height:.9}
+#home h1 span{color:#FFD23F}
+.tag{background:#FF3B3B;border-radius:999px;padding:4px 16px;margin:12px 0;font-family:Fredoka;font-size:20px}
+#home p{max-width:520px;font-size:18px}
+.worlds button{font-size:24px;padding:16px 32px;margin:8px}
+#map{position:fixed;inset:0}
+.bar{position:fixed;top:10px;left:10px;right:10px;z-index:1000;display:flex;gap:8px;flex-wrap:wrap}
+.pin{font-size:30px;filter:drop-shadow(0 2px 2px #000)}
+#modal{position:fixed;inset:0;z-index:2000;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{background:#fff;color:#1B1340;border:4px solid #1B1340;border-radius:20px;padding:18px;width:min(520px,100%);max-height:90vh;overflow:auto}
+.card h2{margin:0 0 8px}
+.card img{display:block;width:100%;max-height:45vh;object-fit:contain;background:#000;border-radius:12px}
+.credit{font-size:11px;color:#666}
+.bubble{background:#F3F0FF;border-radius:14px;padding:12px;font-size:18px;font-weight:800;margin:10px 0}
+.opt{display:block;width:100%;text-align:left;margin:8px 0}
+.ok{background:#2EE6A6}.bad{background:#ffb3b3}
+.go{background:#FF8A00;color:#fff}
+</style>
+</head>
+<body>
+
+<section id="home">
+  <h1>Still<br><span>There</span></h1>
+  <div class="tag">Siguen Ahí</div>
+  <p data-t="lead"></p>
+  <div class="worlds">
+    <button data-world="moon" data-t="moon"></button>
+    <button data-world="mars" data-t="mars"></button>
+  </div>
+  <p><button class="lang"></button></p>
+  <small>NASA Space Apps Challenge 2026 · Team EnYi (Uruguay) · Maps: NASA Solar System Treks · Photos: NASA</small>
+</section>
+
+<div id="map" class="hidden"></div>
+<div class="bar hidden" id="bar">
+  <button id="back" data-t="home"></button>
+  <button data-world="moon" data-t="moon"></button>
+  <button data-world="mars" data-t="mars"></button>
+  <button class="lang"></button>
+</div>
+<div id="modal" class="hidden"><div class="card" id="card"></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// Interface texts
+const UI = {
+  en:{lead:'Welcome to the adventure! Tap a pin on the real NASA map to meet a machine left behind on the Moon or Mars.',
+      moon:'🌕 Moon', mars:'🔴 Mars', home:'⌂ Home', lang:'🌐 Español', next:'Next', quiz:'Take the challenge!',
+      right:'Correct! 🎉', wrong:'Try again!', close:'Back to the map'},
+  es:{lead:'¡Bienvenidos a la aventura! Tocá un pin en el mapa real de NASA para conocer una máquina que quedó en la Luna o en Marte.',
+      moon:'🌕 Luna', mars:'🔴 Marte', home:'⌂ Inicio', lang:'🌐 English', next:'Siguiente', quiz:'¡Al desafío!',
+      right:'¡Correcto! 🎉', wrong:'¡Probá de nuevo!', close:'Volver al mapa'}
+};
+
+// NASA Solar System Treks map tiles
+const TILES = {
+  moon:'https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/{z}/{y}/{x}.jpg',
+  mars:'https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg'
+};
+
+// Machines: real coordinates, real NASA photos, story and challenge in EN / ES
+const MACHINES = [
+  {world:'moon', icon:'🪞', lat:0.674, lon:23.473, photo:'as11-40-5942~large',
+   en:{name:'Apollo 11 Laser Retroreflector', scenes:[
+     "Hi! I'm a mirror made of 100 small prisms. Apollo 11 astronauts set me up on the Moon in 1969.",
+     "When a laser from Earth hits me, I send the light straight back.",
+     "Thanks to me, scientists learned the Moon moves away from Earth about 3.8 cm every year."],
+     q:'How much does the Moon move away from Earth every year?', a:['About 3.8 cm','About 3.8 meters','About 38 km'], ok:0},
+   es:{name:'Retrorreflector láser del Apolo 11', scenes:[
+     "¡Hola! Soy un espejo hecho de 100 prismas pequeños. Los astronautas del Apolo 11 me instalaron en la Luna en 1969.",
+     "Cuando un láser desde la Tierra me alcanza, devuelvo la luz justo al lugar de donde vino.",
+     "Gracias a mí, los científicos supieron que la Luna se aleja de la Tierra unos 3,8 cm por año."],
+     q:'¿Cuánto se aleja la Luna de la Tierra cada año?', a:['Unos 3,8 cm','Unos 3,8 metros','Unos 38 km'], ok:0}},
+  {world:'moon', icon:'🚙', lat:26.132, lon:3.640, photo:'as15-86-11603~large',
+   en:{name:'Apollo 15 Lunar Roving Vehicle', scenes:[
+     "I'm the first car ever driven on the Moon, in 1971.",
+     "They folded me up like a suitcase to fly me there.",
+     "Astronauts drove me 27.8 km. I'm still parked at Hadley."],
+     q:'How far did I drive on the Moon?', a:['3 km','27.8 km','300 km'], ok:1},
+   es:{name:'Rover lunar del Apolo 15', scenes:[
+     "Soy el primer auto que se manejó en la Luna, en 1971.",
+     "Me plegaron como una valija para llevarme hasta allá.",
+     "Los astronautas me manejaron 27,8 km. Sigo estacionado en Hadley."],
+     q:'¿Cuántos kilómetros recorrí en la Luna?', a:['3 km','27,8 km','300 km'], ok:1}},
+  {world:'mars', icon:'🤖', lat:-2.335, lon:-5.348, photo:'PIA17759~large',
+   en:{name:'Opportunity Rover', scenes:[
+     "I landed on Mars in 2004. They told me: you only need to last 90 days.",
+     "I kept exploring for more than 14 years!",
+     "In 2018 a giant dust storm covered the Sun, and I fell silent forever."],
+     q:'How long was I supposed to work on Mars?', a:['90 days','14 years','1 year'], ok:0},
+   es:{name:'Rover Opportunity', scenes:[
+     "Llegué a Marte en 2004. Me dijeron: solo tenés que durar 90 días.",
+     "¡Seguí explorando durante más de 14 años!",
+     "En 2018, una tormenta de polvo gigante tapó el Sol y me quedé en silencio para siempre."],
+     q:'¿Cuánto tiempo tenía que funcionar en Marte?', a:['90 días','14 años','1 año'], ok:0}},
+  {world:'mars', icon:'🚁', lat:18.44, lon:77.45, photo:'PIA24648~orig',
+   en:{name:'Ingenuity Mars Helicopter', scenes:[
+     "I'm Ingenuity, a 1.8 kg helicopter. In 2021 I made the first powered flight on another planet.",
+     "I was planned for 5 flights. I made 72!",
+     "In 2024 my blades were damaged, and I stayed in Jezero Crater for good."],
+     q:'How many flights did I make on Mars?', a:['5','72','500'], ok:1},
+   es:{name:'Helicóptero Ingenuity', scenes:[
+     "Soy Ingenuity, un helicóptero de 1,8 kg. En 2021 hice el primer vuelo propulsado en otro planeta.",
+     "Me planearon para 5 vuelos. ¡Hice 72!",
+     "En 2024 se dañaron mis hélices y me quedé para siempre en el cráter Jezero."],
+     q:'¿Cuántos vuelos hice en Marte?', a:['5','72','500'], ok:1}}
+];
+
+let lang = 'en', map, layer, pins = [];
+const $ = s => document.querySelector(s);
+const img = p => `https://images-assets.nasa.gov/image/${p.split('~')[0]}/${p}.jpg`;
+
+function setLang() {
+  document.querySelectorAll('[data-t]').forEach(el => el.textContent = UI[lang][el.dataset.t]);
+  document.querySelectorAll('.lang').forEach(b => b.textContent = UI[lang].lang);
+}
+
+function showWorld(world) {
+  $('#home').classList.add('hidden');
+  $('#map').classList.remove('hidden');
+  $('#bar').classList.remove('hidden');
+  if (!map) {
+    map = L.map('map', {crs: L.CRS.EPSG4326, minZoom: 1, maxZoom: 7, zoomSnap: 0.5, attributionControl: false});
+    map.zoomControl.setPosition('bottomright');
+  }
+  if (layer) map.removeLayer(layer);
+  layer = L.tileLayer(TILES[world], {noWrap: true, maxNativeZoom: 5}).addTo(map);
+  pins.forEach(p => map.removeLayer(p));
+  const list = MACHINES.filter(m => m.world === world);
+  pins = list.map(m => L.marker([m.lat, m.lon], {icon: L.divIcon({className: 'pin', html: m.icon, iconSize: [34, 34]})})
+    .addTo(map).on('click', () => story(m)));
+  map.invalidateSize();
+  map.fitBounds(list.map(m => [m.lat, m.lon]), {padding: [120, 120], maxZoom: 2.5});
+}
+
+function story(m, i = 0) {
+  const t = m[lang], last = i === t.scenes.length - 1;
+  $('#card').innerHTML = `<h2>${m.icon} ${t.name}</h2>
+    <img src="${img(m.photo)}" alt="${t.name}">
+    <div class="credit">${m.photo.startsWith('PIA') ? 'NASA/JPL-Caltech' : 'NASA'} (${m.photo.split('~')[0]})</div>
+    <div class="bubble">“${t.scenes[i]}”</div>
+    <button class="go" id="next">${last ? UI[lang].quiz : UI[lang].next}</button>`;
+  $('#modal').classList.remove('hidden');
+  $('#next').onclick = () => last ? quiz(m) : story(m, i + 1);
+}
+
+function quiz(m) {
+  const t = m[lang];
+  $('#card').innerHTML = `<h2>🧠 ${t.q}</h2>${t.a.map((a, k) => `<button class="opt" data-k="${k}">${a}</button>`).join('')}<p id="msg"></p>`;
+  document.querySelectorAll('.opt').forEach(b => b.onclick = () => {
+    const right = +b.dataset.k === t.ok;
+    b.classList.add(right ? 'ok' : 'bad');
+    $('#msg').innerHTML = right ? `${UI[lang].right} <button class="go" id="close">${UI[lang].close}</button>` : UI[lang].wrong;
+    if (right) $('#close').onclick = () => $('#modal').classList.add('hidden');
+  });
+}
+
+document.querySelectorAll('[data-world]').forEach(b => b.onclick = () => showWorld(b.dataset.world));
+document.querySelectorAll('.lang').forEach(b => b.onclick = () => { lang = lang === 'en' ? 'es' : 'en'; setLang(); $('#modal').classList.add('hidden'); });
+$('#back').onclick = () => { ['#map', '#bar'].forEach(s => $(s).classList.add('hidden')); $('#home').classList.remove('hidden'); };
+setLang();
+</script>
+</body>
+</html>
